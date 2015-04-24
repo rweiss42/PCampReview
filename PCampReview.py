@@ -1,5 +1,5 @@
 from __future__ import division
-import os, json, xml.dom.minidom, string, glob, re
+import os, json, xml.dom.minidom, string, glob, re, math
 import unittest
 from __main__ import vtk, qt, ctk, slicer
 import CompareVolumes
@@ -325,9 +325,9 @@ class PCampReviewWidget:
     controller = redWidget.sliceController()
     moreButton = slicer.util.findChildren(controller,'MoreButton')[0]
     moreButton.toggle()
-    labelMapOutlineButton = slicer.util.findChildren(
-                            controller,'LabelMapOutlineButton')[0]
-    buttonsFrame.layout().addWidget(labelMapOutlineButton)
+    # labelMapOutlineButton = slicer.util.findChildren(
+    #                         controller,'LabelMapOutlineButton')[0]
+    # buttonsFrame.layout().addWidget(labelMapOutlineButton)
 
     #self.editorWidget.toolsColor.frame.setVisible(False)
 
@@ -353,6 +353,11 @@ class PCampReviewWidget:
     self.modelsVisibilityButton.checkable = True
     modelsHLayout.addWidget(self.modelsVisibilityButton)
     self.modelsVisibilityButton.connect("toggled(bool)", self.onModelsVisibilityButton)
+    
+    labelMapOutlineButton = qt.QPushButton('Fill/Outline')
+    modelsHLayout.layout().addWidget(labelMapOutlineButton)
+    labelMapOutlineButton.connect('clicked()', self.editUtil.toggleLabelOutline)
+    
     modelsHLayout.addStretch(1)
 
     # keep here names of the views created by CompareVolumes logic
@@ -693,92 +698,95 @@ class PCampReviewWidget:
 
   def onBuildModels(self):
     """make models of the structure label nodesvolume"""
-    labelNodes = slicer.util.getNodes('*-label*')
+    if self.refSeriesNumber != '-1':
+      ref = self.refSeriesNumber
+      refLongName = self.seriesMap[ref]['LongName']
+      labelNodes = slicer.util.getNodes('*'+refLongName+'*-label*')
 
-    numNodes = slicer.mrmlScene.GetNumberOfNodesByClass( "vtkMRMLModelHierarchyNode" )
-    outHierarchy = None
+      numNodes = slicer.mrmlScene.GetNumberOfNodesByClass( "vtkMRMLModelHierarchyNode" )
+      outHierarchy = None
 
-    for n in xrange(numNodes):
-      node = slicer.mrmlScene.GetNthNodeByClass( n, "vtkMRMLModelHierarchyNode" )
-      if node.GetName() == "PCampReview Models":
-        outHierarchy = node
-        break
-
-    # Remove the previous models
-    if outHierarchy:
-      collection = vtk.vtkCollection()
-      outHierarchy.GetChildrenModelNodes(collection)
-      n = collection.GetNumberOfItems()
-      if n != 0:
-        for i in xrange(n):
-          modelNode = collection.GetItemAsObject(i)
-          slicer.mrmlScene.RemoveNode(modelNode)
-
-    # if models hierarchy does not exist, create it.
-    else:
-      outHierarchy = slicer.vtkMRMLModelHierarchyNode()
-      outHierarchy.SetScene( slicer.mrmlScene )
-      outHierarchy.SetName( "PCampReview Models" )
-      slicer.mrmlScene.AddNode( outHierarchy )
-
-    progress = qt.QProgressDialog()
-    progress.minimumDuration = 0
-    progress.modal = True
-    progress.show()
-    progress.setValue(0)
-    progress.setMaximum(len(labelNodes))
-    step = 0
-    for label in labelNodes.values():
-      labelName =  label.GetName().split(':')[1]
-      structureName = labelName[labelName[:-6].rfind("-")+1:-6]
-      # Only save labels with known structure names
-      if any(structureName in s for s in self.structureNames):
-        parameters = {}
-        parameters["InputVolume"] = label.GetID()
-        parameters['FilterType'] = "Sinc"
-        parameters['GenerateAll'] = True
-
-        parameters["JointSmoothing"] = False
-        parameters["SplitNormals"] = True
-        parameters["PointNormals"] = True
-        parameters["SkipUnNamed"] = True
-
-        # create models for all labels
-        parameters["StartLabel"] = -1
-        parameters["EndLabel"] = -1
-
-        parameters["Decimate"] = 0
-        parameters["Smooth"] = 0
-
-        parameters["ModelSceneFile"] = outHierarchy
-
-        progress.labelText = '\nMaking Model for %s' % structureName
-        progress.setValue(step)
-        if progress.wasCanceled:
+      for n in xrange(numNodes):
+        node = slicer.mrmlScene.GetNthNodeByClass( n, "vtkMRMLModelHierarchyNode" )
+        if node.GetName() == 'PCampReview'+refLongName:
+          outHierarchy = node
           break
 
-        try:
-          modelMaker = slicer.modules.modelmaker
-          self.CLINode = slicer.cli.run(modelMaker, self.CLINode,
-                         parameters, wait_for_completion=True)
-        except AttributeError:
-          qt.QMessageBox.critical(slicer.util.mainWindow(),'Editor', 'The ModelMaker module is not available<p>Perhaps it was disabled in the application settings or did not load correctly.')
-      step += 1
-    progress.close()
-      # 
+      # Remove the previous models
+      if outHierarchy:
+        collection = vtk.vtkCollection()
+        outHierarchy.GetChildrenModelNodes(collection)
+        n = collection.GetNumberOfItems()
+        if n != 0:
+          for i in xrange(n):
+            modelNode = collection.GetItemAsObject(i)
+            slicer.mrmlScene.RemoveNode(modelNode)
 
-    if outHierarchy:
-      collection = vtk.vtkCollection()
-      outHierarchy.GetChildrenModelNodes(collection)
-      n = collection.GetNumberOfItems()
-      if n != 0:
-        for i in xrange(n):
-          modelNode = collection.GetItemAsObject(i)
-          displayNode = modelNode.GetDisplayNode()
-          displayNode.SetSliceIntersectionVisibility(1)
-          displayNode.SetSliceIntersectionThickness(2)
-        self.modelsVisibilityButton.checked = False
-        self.updateViewRenderers()
+      # if models hierarchy does not exist, create it.
+      else:
+        outHierarchy = slicer.vtkMRMLModelHierarchyNode()
+        outHierarchy.SetScene( slicer.mrmlScene )
+        outHierarchy.SetName( 'PCampReview-'+refLongName )
+        slicer.mrmlScene.AddNode( outHierarchy )
+
+      progress = qt.QProgressDialog()
+      progress.minimumDuration = 0
+      progress.modal = True
+      progress.show()
+      progress.setValue(0)
+      progress.setMaximum(len(labelNodes))
+      step = 0
+      for label in labelNodes.values():
+        labelName =  label.GetName().split(':')[1]
+        structureName = labelName[labelName[:-6].rfind("-")+1:-6]
+        # Only save labels with known structure names
+        if any(structureName in s for s in self.structureNames):
+          parameters = {}
+          parameters["InputVolume"] = label.GetID()
+          parameters['FilterType'] = "Sinc"
+          parameters['GenerateAll'] = True
+
+          parameters["JointSmoothing"] = False
+          parameters["SplitNormals"] = True
+          parameters["PointNormals"] = True
+          parameters["SkipUnNamed"] = True
+
+          # create models for all labels
+          parameters["StartLabel"] = -1
+          parameters["EndLabel"] = -1
+
+          parameters["Decimate"] = 0
+          parameters["Smooth"] = 0
+
+          parameters["ModelSceneFile"] = outHierarchy
+
+          progress.labelText = '\nMaking Model for %s' % structureName
+          progress.setValue(step)
+          if progress.wasCanceled:
+            break
+
+          try:
+            modelMaker = slicer.modules.modelmaker
+            self.CLINode = slicer.cli.run(modelMaker, self.CLINode,
+                           parameters, wait_for_completion=True)
+          except AttributeError:
+            qt.QMessageBox.critical(slicer.util.mainWindow(),'Editor', 'The ModelMaker module is not available<p>Perhaps it was disabled in the application settings or did not load correctly.')
+        step += 1
+      progress.close()
+        # 
+
+      if outHierarchy:
+        collection = vtk.vtkCollection()
+        outHierarchy.GetChildrenModelNodes(collection)
+        n = collection.GetNumberOfItems()
+        if n != 0:
+          for i in xrange(n):
+            modelNode = collection.GetItemAsObject(i)
+            displayNode = modelNode.GetDisplayNode()
+            displayNode.SetSliceIntersectionVisibility(1)
+            displayNode.SetSliceIntersectionThickness(2)
+          self.modelsVisibilityButton.checked = False
+          self.updateViewRenderers()
 
   def updateViewRenderers (self):
     layoutManager = slicer.app.layoutManager()
@@ -787,31 +795,53 @@ class PCampReviewWidget:
       view = layoutManager.sliceWidget(wn).sliceView()
       view.scheduleRender()
 
-  def onModelsVisibilityButton(self,toggled):
-    outHierarchy = None
+  def removeAllModels(self):
+    modelHierarchyNodes = []
     numNodes = slicer.mrmlScene.GetNumberOfNodesByClass( "vtkMRMLModelHierarchyNode" )
     for n in xrange(numNodes):
-      node = slicer.mrmlScene.GetNthNodeByClass( n, "vtkMRMLModelHierarchyNode" )
-      if node.GetName() == "PCampReview Models":
-        outHierarchy = node
-        break
+      node = slicer.mrmlScene.GetNthNodeByClass( n, "vtkMRMLModelHierarchyNode")
+      if node.GetName()[:12] == 'PCampReview-':
+        modelHierarchyNodes.append(node)
 
-    # Remove the previous models
-    if outHierarchy:
-      collection = vtk.vtkCollection()
-      outHierarchy.GetChildrenModelNodes(collection)
-      n = collection.GetNumberOfItems()
-      if n != 0:
-        for i in xrange(n):
-          modelNode = collection.GetItemAsObject(i)
-          displayNode = modelNode.GetDisplayNode()
-          if toggled:
-            displayNode.SetSliceIntersectionVisibility(0)
-            self.modelsVisibilityButton.setText('Show')
-          else:
-            displayNode.SetSliceIntersectionVisibility(1)
-            self.modelsVisibilityButton.setText('Hide')
-        self.updateViewRenderers()
+    for hierarchyNode in modelHierarchyNodes:
+      modelNodes = vtk.vtkCollection()
+      hierarchyNode.GetChildrenModelNodes(modelNodes)
+      for i in range(modelNodes.GetNumberOfItems()) :
+          slicer.mrmlScene.RemoveNode(modelNodes.GetItemAsObject(i))
+      slicer.mrmlScene.RemoveNode(hierarchyNode)
+
+    self.modelsVisibilityButton.checked = False
+    self.modelsVisibilityButton.setText('hide')
+    
+  def onModelsVisibilityButton(self,toggled):
+    if self.refSeriesNumber != '-1':
+      ref = self.refSeriesNumber
+      refLongName = self.seriesMap[ref]['LongName']
+
+      labelNodes = slicer.util.getNodes('*'+refLongName+'*-label*')
+      outHierarchy = None
+      numNodes = slicer.mrmlScene.GetNumberOfNodesByClass( "vtkMRMLModelHierarchyNode" )
+      for n in xrange(numNodes):
+        node = slicer.mrmlScene.GetNthNodeByClass( n, "vtkMRMLModelHierarchyNode" )
+        if node.GetName() == 'PCampReview-'+refLongName:
+          outHierarchy = node
+          break
+
+      if outHierarchy:
+        collection = vtk.vtkCollection()
+        outHierarchy.GetChildrenModelNodes(collection)
+        n = collection.GetNumberOfItems()
+        if n != 0:
+          for i in xrange(n):
+            modelNode = collection.GetItemAsObject(i)
+            displayNode = modelNode.GetDisplayNode()
+            if toggled:
+              displayNode.SetSliceIntersectionVisibility(0)
+              self.modelsVisibilityButton.setText('Show')
+            else:
+              displayNode.SetSliceIntersectionVisibility(1)
+              self.modelsVisibilityButton.setText('Hide')
+          self.updateViewRenderers()
 
   def findElement(self, dom, name):
     els = dom.getElementsByTagName('element')
@@ -878,6 +908,8 @@ class PCampReviewWidget:
       if continuteStep4:
         self.step1frame.collapsed = 1
         return
+      else:
+        self.removeAllModels()
 
     if self.currentStep == 1:
       return
@@ -896,6 +928,8 @@ class PCampReviewWidget:
       if continuteStep4:
         self.step2frame.collapsed = 1
         return
+      else:
+        self.removeAllModels()
 
     if self.currentStep == 2:
       return
@@ -915,10 +949,16 @@ class PCampReviewWidget:
       return
 
     dirs = os.listdir(inputDir)
+    
+    progress = self.makeProgressIndicator(len(dirs))
+    nLoaded = 0
+    
     for studyName in dirs:
       if os.path.isdir(inputDir+'/'+studyName) and studyName != 'SETTINGS':
         studyDirs.append(studyName)
         print('Appending '+studyName)
+        progress.setValue(nLoaded)
+        nLoaded += 1
 
     self.studiesModel.clear()
     self.studyItems = []
@@ -928,6 +968,8 @@ class PCampReviewWidget:
       self.studiesModel.appendRow(sItem)
       print('Appended to model study '+s)
     # TODO: unload all volume nodes that are already loaded
+    
+    progress.delete()
 
   '''
   Step 3: Select series of interest
@@ -938,6 +980,8 @@ class PCampReviewWidget:
       if continuteStep4:
         self.step3frame.collapsed = 1
         return
+      else:
+        self.removeAllModels()
 
     if self.currentStep == 3 or not self.selectedStudyName:
       self.step3frame.collapsed = 1
@@ -965,6 +1009,10 @@ class PCampReviewWidget:
     inputDir = self.settings.value('PCampReview/InputLocation')
     self.resourcesDir = os.path.join(inputDir,self.selectedStudyName,'RESOURCES')
 
+    # Loading progress indicator
+    progress = self.makeProgressIndicator(len(os.listdir(self.resourcesDir)))
+    nLoaded = 0
+
     # expect one directory for each processed series, with the name
     # corresponding to the series number
     self.seriesMap = {}
@@ -985,6 +1033,11 @@ class PCampReviewWidget:
             except:
               print('Failed to get from XML')
               continue
+              
+            progress.labelText = seriesName
+            progress.setValue(nLoaded)
+            nLoaded += 1
+            
             volumePath = os.path.join(root,seriesNumber+'.nrrd')
             self.seriesMap[seriesNumber] = {'MetaInfo':None, 'NRRDLocation':volumePath,'LongName':seriesName}
             self.seriesMap[seriesNumber]['ShortName'] = str(seriesNumber)+":"+seriesName
@@ -1028,6 +1081,8 @@ class PCampReviewWidget:
       sItem.setCheckable(1)
       if self.isSeriesOfInterest(seriesText):
         sItem.setCheckState(2)
+
+    progress.delete()
 
   '''
   T2w, sub, ADC, T2map
@@ -1086,18 +1141,26 @@ class PCampReviewWidget:
 
     # reference selector can have None (initially)
     # user should select reference, which triggers creation of the label and
+
     # initialization of the editor widget
 
     self.refSelector.addItem('None')
 
     # ignore refSelector events until the selector is populated!
     self.refSelectorIgnoreUpdates = True
+    
+    # Loading progress indicator
+    progress = self.makeProgressIndicator(len(checkedItems))
+    nLoaded = 0
 
     # iterate over all selected items and add them to the reference selector
     selectedSeries = {}
     for i in checkedItems:
       text = i.text()
-      self.delayDisplay('Processing series '+text)
+      
+      progress.labelText = text
+      progress.setValue(nLoaded)
+      nLoaded += 1
 
       seriesNumber = text.split(':')[0]
       shortName = self.seriesMap[seriesNumber]['ShortName']
@@ -1146,6 +1209,8 @@ class PCampReviewWidget:
       selectedSeriesNumbers.append(int(seriesNumber))
 
     self.seriesMap = selectedSeries
+    
+    progress.delete()
 
     print('Selected series: '+str(selectedSeries)+', reference: '+str(ref))
     #self.cvLogic = CompareVolumes.CompareVolumesLogic()
@@ -1170,7 +1235,7 @@ class PCampReviewWidget:
       return True
 
   def onReferenceChanged(self, id):
-
+    self.removeAllModels()
     if self.refSelectorIgnoreUpdates:
       return
     text = self.refSelector.currentText
@@ -1245,6 +1310,16 @@ class PCampReviewWidget:
     self.cvLogic.rotateToVolumePlanes(self.volumeNodes[0])
     self.setOpacityOnAllSliceWidgets(1.0)
   '''
+  def makeProgressIndicator(self, maxVal):
+    progressIndicator = qt.QProgressDialog()
+    progressIndicator.minimumDuration = 0
+    progressIndicator.modal = True
+    progressIndicator.setMaximum(maxVal)
+    progressIndicator.setValue(0)
+    progressIndicator.setWindowTitle("Processing...")
+    progressIndicator.show()
+    return progressIndicator
+
 
   def cleanupDir(self, d):
     if not os.path.exists(d):
