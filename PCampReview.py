@@ -181,7 +181,7 @@ class PCampReviewWidget:
     #
     reloadCollapsibleButton = ctk.ctkCollapsibleButton()
     reloadCollapsibleButton.text = "Reload && Test"
-    #self.layout.addWidget(reloadCollapsibleButton)
+    self.layout.addWidget(reloadCollapsibleButton)
     reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
 
     # reload button
@@ -293,6 +293,28 @@ class PCampReviewWidget:
     self.refSelector = qt.QComboBox()
     step4Layout.addRow(qt.QLabel("Reference image: "), self.refSelector)
     self.refSelector.connect('currentIndexChanged(int)', self.onReferenceChanged)
+    
+    
+    
+    
+    self.sliderFrame = qt.QFrame(self.step4frame)
+    self.sliderFrame.setLayout(qt.QHBoxLayout())
+    
+    self.__mdSlider = ctk.ctkSliderWidget()
+    self.__mdSlider.connect('valueChanged(double)', self.onSliderChanged)
+    self.__mdSlider.enabled = False
+    self.sliderFrame.layout().addWidget(self.__mdSlider)
+    
+    self.grabButton = qt.QPushButton("Grab Frame")
+    self.grabButton.connect('clicked()', self.onGrabFrame)
+    self.grabButton.enabled = False
+    self.sliderFrame.layout().addWidget(self.grabButton)
+    
+    step4Layout.addRow(qt.QLabel("Frame control: "), self.sliderFrame)
+    
+    
+    
+    
 
     groupLabel = qt.QLabel('Show series:')
     self.viewGroup = qt.QButtonGroup()
@@ -419,6 +441,8 @@ class PCampReviewWidget:
     self.volumeNodes = {}
     self.refSelectorIgnoreUpdates = False
     self.selectedStudyName = None
+    
+    self.currentStep = 1
 
   def enter(self):
     settings = qt.QSettings()
@@ -1159,7 +1183,8 @@ class PCampReviewWidget:
 
       # cannot use multivolumes as reference, since they are not recognized by
       # Editor
-      if volume.GetClassName() == 'vtkMRMLScalarVolumeNode':
+      # if volume.GetClassName() == 'vtkMRMLScalarVolumeNode':
+      if True:
         try:
           if self.seriesMap[seriesNumber]['MetaInfo']['ResourceType'] == 'OncoQuant':
             dNode = volume.GetDisplayNode()
@@ -1235,9 +1260,29 @@ class PCampReviewWidget:
       refLabel = self.seriesMap[str(ref)]['Label']
     except KeyError:
       # create a new label
-      labelName = self.seriesMap[str(ref)]['ShortName']+'-label'
-      refLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene,self.volumeNodes[0],labelName)
-      self.seriesMap[str(ref)]['Label'] = refLabel
+      if self.volumeNodes[0].GetClassName() == 'vtkMRMLMultiVolumeNode':
+        print('now we need to grab a frame')
+      else:
+        labelName = self.seriesMap[str(ref)]['ShortName']+'-label'
+        refLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene,self.volumeNodes[0],labelName)
+        self.seriesMap[str(ref)]['Label'] = refLabel
+
+    
+    # handle MultiVolume frame number
+    if self.volumeNodes[0].GetClassName() == 'vtkMRMLMultiVolumeNode':
+      nFrames = self.volumeNodes[0].GetNumberOfFrames()
+      self.__mdSlider.minimum = 0
+      self.__mdSlider.maximum = nFrames-1
+      self.__mdSlider.value = nFrames-1
+      d = self.volumeNodes[0].GetDisplayNode()
+      d.SetFrameComponent(nFrames-1)
+      self.__mdSlider.enabled = True
+      self.grabButton.enabled = True
+    else:
+      self.__mdSlider.minimum = 0
+      self.__mdSlider.maximum = 0
+      self.__mdSlider.enabled = False
+      self.grabButton.enabled = False
 
     dNode = refLabel.GetDisplayNode()
     dNode.SetAndObserveColorNodeID(self.PCampReviewColorNode.GetID())
@@ -1293,6 +1338,14 @@ class PCampReviewWidget:
     progressIndicator.show()
     return progressIndicator
 
+  def onSliderChanged(self, newValue):
+    newValue = int(newValue)
+    
+    d = self.volumeNodes[0].GetDisplayNode()
+    d.SetFrameComponent(newValue)
+    
+  def onGrabFrame(self):
+    print('foo')
 
   def cleanupDir(self, d):
     if not os.path.exists(d):
