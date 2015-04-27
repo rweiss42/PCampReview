@@ -161,7 +161,8 @@ class PCampReviewWidget:
     #
     reloadCollapsibleButton = ctk.ctkCollapsibleButton()
     reloadCollapsibleButton.text = "Reload && Test"
-    #self.layout.addWidget(reloadCollapsibleButton)
+    self.layout.addWidget(reloadCollapsibleButton)
+    self.currentStep = 1
     reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
 
     # reload button
@@ -503,6 +504,24 @@ class PCampReviewWidget:
       self.colorFile = modulePath + "Resources/Colors/PCampReviewColors.csv"
       self.customLUTLabel.text = 'Using default LUT'
       
+    # setup the color table
+    self.PCampReviewColorNode = slicer.vtkMRMLColorTableNode()
+    colorNode = self.PCampReviewColorNode
+    colorNode.SetName('PCampReview')
+    slicer.mrmlScene.AddNode(colorNode)
+    colorNode.SetTypeToUser()
+    with open(self.colorFile) as f:
+      n = sum(1 for line in f)
+    colorNode.SetNumberOfColors(n-1)
+    import csv
+    self.structureNames = []
+    with open(self.colorFile, 'rb') as csvfile:
+      reader = csv.DictReader(csvfile, delimiter=',')
+      for index,row in enumerate(reader):
+        colorNode.SetColor(index,row['Label'],float(row['R'])/255,
+                float(row['G'])/255,float(row['B'])/255,float(row['A']))
+        self.structureNames.append(row['Label'])
+      
       
   def onNameEntered(self):
     name = self.nameText.text
@@ -631,7 +650,8 @@ class PCampReviewWidget:
     import shutil
     
     timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    # save the lookup table that is being used
+    
+    # save the lookup table that was used along side the labels
     colorFileName = os.path.join(segmentationsDir,self.settings.value('PCampReview/UserName')+'-LUT-'+timestamp+'.csv')
     shutil.copyfile(self.colorFile, colorFileName)
     
@@ -1094,23 +1114,7 @@ class PCampReviewWidget:
       return
     self.currentStep = 4
     
-    # setup the color node
-    self.PCampReviewColorNode = slicer.vtkMRMLColorTableNode()
-    colorNode = self.PCampReviewColorNode
-    colorNode.SetName('PCampReview')
-    slicer.mrmlScene.AddNode(colorNode)
-    colorNode.SetTypeToUser()
-    with open(self.colorFile) as f:
-      n = sum(1 for line in f)
-    colorNode.SetNumberOfColors(n-1)
-    import csv
-    self.structureNames = []
-    with open(self.colorFile, 'rb') as csvfile:
-      reader = csv.DictReader(csvfile, delimiter=',')
-      for index,row in enumerate(reader):
-        colorNode.SetColor(index,row['Label'],float(row['R'])/255,
-                float(row['G'])/255,float(row['B'])/255,float(row['A']))
-        self.structureNames.append(row['Label'])
+
         
 
     self.editorWidget.enter()
