@@ -305,10 +305,10 @@ class PCampReviewWidget:
     self.__mdSlider.enabled = False
     self.sliderFrame.layout().addWidget(self.__mdSlider)
     
-    self.grabButton = qt.QPushButton("Grab Frame")
-    self.grabButton.connect('clicked()', self.onGrabFrame)
-    self.grabButton.enabled = False
-    self.sliderFrame.layout().addWidget(self.grabButton)
+    # self.grabButton = qt.QPushButton("Grab Frame")
+    # self.grabButton.connect('clicked()', self.onGrabFrame)
+    # self.grabButton.enabled = False
+    # self.sliderFrame.layout().addWidget(self.grabButton)
     
     step4Layout.addRow(qt.QLabel("Frame control: "), self.sliderFrame)
     
@@ -872,10 +872,13 @@ class PCampReviewWidget:
     return (number,name)
 
   def checkAndLoadLabel(self, resourcesDir, seriesNumber, volumeName):
+    
+    print('in checkAndLoadLabel')
     globPath = os.path.join(self.resourcesDir,str(seriesNumber),"Segmentations",
         self.settings.value('PCampReview/UserName')+'*')
     import glob
     previousSegmentations = glob.glob(globPath)
+    print(previousSegmentations)
     if not len(previousSegmentations):
       return (False,None)
 
@@ -886,6 +889,7 @@ class PCampReviewWidget:
     latestSegmentations = {}
     for segmentation in previousSegmentations:
         structureName = segmentation[segmentation.find("-")+1:segmentation.rfind("-")]
+        print('found segmentation for structure: '+structureName)
         timeStamp = int(segmentation[segmentation.rfind("-")+1:-5])
         if structureName not in latestSegmentations.keys():
           latestSegmentations[structureName] = segmentation
@@ -902,6 +906,7 @@ class PCampReviewWidget:
       print('Setting loaded label name to '+volumeName)
       shortFileName = fileName[fileName.rfind("/")+1:]
       structureID = shortFileName[shortFileName[:-5].find("-")+1:shortFileName[:-5].rfind("-")]
+      print('structureID = '+structureID)
       label.SetName(volumeName+'-'+structureID+'-label')
       label.SetLabelMap(1)
       label.RemoveAllDisplayNodeIDs()
@@ -1255,15 +1260,58 @@ class PCampReviewWidget:
     self.volumeNodes = [self.seriesMap[str(ref)]['Volume']]+self.volumeNodes
     self.viewNames = [self.seriesMap[str(ref)]['ShortName']]+self.viewNames
 
+    mvNodeFrameCopy = slicer.vtkMRMLScalarVolumeNode()
+
     try:
       # check if already have a label for this node
       refLabel = self.seriesMap[str(ref)]['Label']
     except KeyError:
       # create a new label
+      labelName = self.seriesMap[str(ref)]['ShortName']+'-label'
       if self.volumeNodes[0].GetClassName() == 'vtkMRMLMultiVolumeNode':
         print('now we need to grab a frame')
+        mvNodeFrameCopy = slicer.vtkMRMLScalarVolumeNode()
+        mvNodeFrameCopy.SetName(self.volumeNodes[0].GetName()+' frame')
+        mvNodeFrameCopy.SetScene(slicer.mrmlScene)
+        slicer.mrmlScene.AddNode(mvNodeFrameCopy)
+        
+        mvImage = self.volumeNodes[0].GetImageData()
+        frameId = self.volumeNodes[0].GetNumberOfFrames()-1
+
+        extract = vtk.vtkImageExtractComponents()
+        if vtk.VTK_MAJOR_VERSION <= 5:
+          extract.SetInput(mvImage)
+        else:
+          extract.SetInputData(mvImage)
+        extract.SetComponents(frameId)
+        extract.Update()
+
+        ras2ijk = vtk.vtkMatrix4x4()
+        ijk2ras = vtk.vtkMatrix4x4()
+        self.volumeNodes[0].GetRASToIJKMatrix(ras2ijk)
+        self.volumeNodes[0].GetIJKToRASMatrix(ijk2ras)
+        mvNodeFrameCopy.SetRASToIJKMatrix(ras2ijk)
+        mvNodeFrameCopy.SetIJKToRASMatrix(ijk2ras)
+
+        mvNodeFrameCopy.SetAndObserveImageData(extract.GetOutput())
+
+        displayNode = mvNodeFrameCopy.GetDisplayNode()
+
+        if displayNode == None:
+          displayNode = slicer.mrmlScene.CreateNodeByClass('vtkMRMLScalarVolumeDisplayNode')
+          displayNode.SetReferenceCount(1)
+          displayNode.SetScene(slicer.mrmlScene)
+          slicer.mrmlScene.AddNode(displayNode)
+          displayNode.SetDefaultColorMap()
+          mvNodeFrameCopy.SetAndObserveDisplayNodeID(displayNode.GetID())
+
+        frameName = '%s frame %d' % (self.volumeNodes[0].GetName(), frameId)
+        mvNodeFrameCopy.SetName(frameName)
+        
+        refLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene,mvNodeFrameCopy,labelName)
+        self.seriesMap[str(ref)]['Label'] = refLabel
+        
       else:
-        labelName = self.seriesMap[str(ref)]['ShortName']+'-label'
         refLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene,self.volumeNodes[0],labelName)
         self.seriesMap[str(ref)]['Label'] = refLabel
 
@@ -1277,12 +1325,10 @@ class PCampReviewWidget:
       d = self.volumeNodes[0].GetDisplayNode()
       d.SetFrameComponent(nFrames-1)
       self.__mdSlider.enabled = True
-      self.grabButton.enabled = True
     else:
       self.__mdSlider.minimum = 0
       self.__mdSlider.maximum = 0
       self.__mdSlider.enabled = False
-      self.grabButton.enabled = False
 
     dNode = refLabel.GetDisplayNode()
     dNode.SetAndObserveColorNodeID(self.PCampReviewColorNode.GetID())
@@ -1300,7 +1346,15 @@ class PCampReviewWidget:
       self.rows = 4
     self.cols = math.ceil(nVolumeNodes/self.rows)
 
-    self.editorWidget.setMasterNode(self.volumeNodes[0])
+    
+    
+    if self.volumeNodes[0].GetClassName() == 'vtkMRMLMultiVolumeNode':
+      self.editorWidget.setMasterNode(mvNodeFrameCopy)
+    else:
+      self.editorWidget.setMasterNode(self.volumeNodes[0])
+    
+    
+    
     self.editorWidget.setMergeNode(self.seriesMap[str(ref)]['Label'])
 
     self.cvLogic.viewerPerVolume(self.volumeNodes, background=self.volumeNodes[0], label=refLabel,layout=[self.rows,self.cols])
@@ -1340,13 +1394,9 @@ class PCampReviewWidget:
 
   def onSliderChanged(self, newValue):
     newValue = int(newValue)
-    
     d = self.volumeNodes[0].GetDisplayNode()
     d.SetFrameComponent(newValue)
     
-  def onGrabFrame(self):
-    print('foo')
-
   def cleanupDir(self, d):
     if not os.path.exists(d):
       return
