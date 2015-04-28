@@ -1020,7 +1020,7 @@ class PCampReviewWidget:
 
     # if any volumes have been loaded (we returned back from a previous step)
     # then remove all of them from the scene
-    allVolumeNodes = slicer.util.getNodes('vtkMRMLScalarVolumeNode*')
+    allVolumeNodes = slicer.util.getNodes('vtkMRML*VolumeNode*')
     if len(allVolumeNodes):
       for key in allVolumeNodes.keys():
         slicer.mrmlScene.RemoveNode(allVolumeNodes[key])
@@ -1177,6 +1177,51 @@ class PCampReviewWidget:
           d = volume.GetDisplayNode()
           nFrames = volume.GetNumberOfFrames()
           d.SetFrameComponent(nFrames-1)
+          
+          
+          # extract a ScalarVolumeNode frame
+          mvNodeFrameCopy = slicer.vtkMRMLScalarVolumeNode()
+          mvNodeFrameCopy.SetScene(slicer.mrmlScene)
+          slicer.mrmlScene.AddNode(mvNodeFrameCopy)
+        
+          mvImage = volume.GetImageData()
+          frameId = volume.GetNumberOfFrames()-1
+
+          extract = vtk.vtkImageExtractComponents()
+          if vtk.VTK_MAJOR_VERSION <= 5:
+            extract.SetInput(mvImage)
+          else:
+            extract.SetInputData(mvImage)
+          extract.SetComponents(frameId)
+          extract.Update()
+
+          ras2ijk = vtk.vtkMatrix4x4()
+          ijk2ras = vtk.vtkMatrix4x4()
+          volume.GetRASToIJKMatrix(ras2ijk)
+          volume.GetIJKToRASMatrix(ijk2ras)
+          mvNodeFrameCopy.SetRASToIJKMatrix(ras2ijk)
+          mvNodeFrameCopy.SetIJKToRASMatrix(ijk2ras)
+
+          mvNodeFrameCopy.SetAndObserveImageData(extract.GetOutput())
+
+          displayNode = mvNodeFrameCopy.GetDisplayNode()
+
+          if displayNode == None:
+            displayNode = slicer.mrmlScene.CreateNodeByClass('vtkMRMLScalarVolumeDisplayNode')
+            displayNode.SetReferenceCount(1)
+            displayNode.SetScene(slicer.mrmlScene)
+            slicer.mrmlScene.AddNode(displayNode)
+            displayNode.SetDefaultColorMap()
+            mvNodeFrameCopy.SetAndObserveDisplayNodeID(displayNode.GetID())
+
+          mvNodeFrameCopy.SetName(volume.GetName())
+          
+          self.seriesMap[seriesNumber]['ScalarVolume'] = mvNodeFrameCopy
+          
+          
+          
+          
+          
       else:
         print('Failed to load image volume!')
         return
@@ -1260,8 +1305,6 @@ class PCampReviewWidget:
     self.volumeNodes = [self.seriesMap[str(ref)]['Volume']]+self.volumeNodes
     self.viewNames = [self.seriesMap[str(ref)]['ShortName']]+self.viewNames
 
-    mvNodeFrameCopy = slicer.vtkMRMLScalarVolumeNode()
-
     try:
       # check if already have a label for this node
       refLabel = self.seriesMap[str(ref)]['Label']
@@ -1269,51 +1312,11 @@ class PCampReviewWidget:
       # create a new label
       labelName = self.seriesMap[str(ref)]['ShortName']+'-label'
       if self.volumeNodes[0].GetClassName() == 'vtkMRMLMultiVolumeNode':
-        print('now we need to grab a frame')
-        mvNodeFrameCopy = slicer.vtkMRMLScalarVolumeNode()
-        mvNodeFrameCopy.SetName(self.volumeNodes[0].GetName()+' frame')
-        mvNodeFrameCopy.SetScene(slicer.mrmlScene)
-        slicer.mrmlScene.AddNode(mvNodeFrameCopy)
-        
-        mvImage = self.volumeNodes[0].GetImageData()
-        frameId = self.volumeNodes[0].GetNumberOfFrames()-1
-
-        extract = vtk.vtkImageExtractComponents()
-        if vtk.VTK_MAJOR_VERSION <= 5:
-          extract.SetInput(mvImage)
-        else:
-          extract.SetInputData(mvImage)
-        extract.SetComponents(frameId)
-        extract.Update()
-
-        ras2ijk = vtk.vtkMatrix4x4()
-        ijk2ras = vtk.vtkMatrix4x4()
-        self.volumeNodes[0].GetRASToIJKMatrix(ras2ijk)
-        self.volumeNodes[0].GetIJKToRASMatrix(ijk2ras)
-        mvNodeFrameCopy.SetRASToIJKMatrix(ras2ijk)
-        mvNodeFrameCopy.SetIJKToRASMatrix(ijk2ras)
-
-        mvNodeFrameCopy.SetAndObserveImageData(extract.GetOutput())
-
-        displayNode = mvNodeFrameCopy.GetDisplayNode()
-
-        if displayNode == None:
-          displayNode = slicer.mrmlScene.CreateNodeByClass('vtkMRMLScalarVolumeDisplayNode')
-          displayNode.SetReferenceCount(1)
-          displayNode.SetScene(slicer.mrmlScene)
-          slicer.mrmlScene.AddNode(displayNode)
-          displayNode.SetDefaultColorMap()
-          mvNodeFrameCopy.SetAndObserveDisplayNodeID(displayNode.GetID())
-
-        frameName = '%s frame %d' % (self.volumeNodes[0].GetName(), frameId)
-        mvNodeFrameCopy.SetName(frameName)
-        
-        refLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene,mvNodeFrameCopy,labelName)
-        self.seriesMap[str(ref)]['Label'] = refLabel
-        
+        refLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene,self.seriesMap[str(ref)]['ScalarVolume'],labelName)
       else:
         refLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene,self.volumeNodes[0],labelName)
-        self.seriesMap[str(ref)]['Label'] = refLabel
+        
+      self.seriesMap[str(ref)]['Label'] = refLabel
 
     
     # handle MultiVolume frame number
@@ -1349,18 +1352,16 @@ class PCampReviewWidget:
     
     
     if self.volumeNodes[0].GetClassName() == 'vtkMRMLMultiVolumeNode':
-      self.editorWidget.setMasterNode(mvNodeFrameCopy)
+      print('Setting master node for the Editor to '+self.seriesMap[str(ref)]['ScalarVolume'].GetID())
+      self.editorWidget.setMasterNode(self.seriesMap[str(ref)]['ScalarVolume'])
     else:
+      print('Setting master node for the Editor to '+self.volumeNodes[0].GetID())
       self.editorWidget.setMasterNode(self.volumeNodes[0])
-    
-    
     
     self.editorWidget.setMergeNode(self.seriesMap[str(ref)]['Label'])
 
     self.cvLogic.viewerPerVolume(self.volumeNodes, background=self.volumeNodes[0], label=refLabel,layout=[self.rows,self.cols])
     self.cvLogic.rotateToVolumePlanes(self.volumeNodes[0])
-
-    print('Setting master node for the Editor to '+self.volumeNodes[0].GetID())
 
     self.editorParameterNode.Modified()
 
@@ -1393,9 +1394,10 @@ class PCampReviewWidget:
     return progressIndicator
 
   def onSliderChanged(self, newValue):
-    newValue = int(newValue)
-    d = self.volumeNodes[0].GetDisplayNode()
-    d.SetFrameComponent(newValue)
+    if self.volumeNodes[0].GetClassName() == 'vtkMRMLMultiVolumeNode':
+      newValue = int(newValue)
+      d = self.volumeNodes[0].GetDisplayNode()
+      d.SetFrameComponent(newValue)
     
   def cleanupDir(self, d):
     if not os.path.exists(d):
