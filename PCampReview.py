@@ -1379,20 +1379,11 @@ class PCampReviewWidget:
       self.rows = 4
     self.cols = math.ceil(nVolumeNodes/self.rows)
 
-<<<<<<< HEAD
-    
-    
     if self.volumeNodes[0].GetClassName() == 'vtkMRMLMultiVolumeNode':
-      print('Setting master node for the Editor to '+self.seriesMap[str(ref)]['ScalarVolume'].GetID())
-      self.editorWidget.setMasterNode(self.seriesMap[str(ref)]['ScalarVolume'])
+      self.editorWidget.helper.setVolumes(self.seriesMap[str(ref)]['ScalarVolume'], self.seriesMap[str(ref)]['Label'])
     else:
       print('Setting master node for the Editor to '+self.volumeNodes[0].GetID())
-      self.editorWidget.setMasterNode(self.volumeNodes[0])
-    
-    self.editorWidget.setMergeNode(self.seriesMap[str(ref)]['Label'])
-=======
-    self.editorWidget.helper.setVolumes(self.volumeNodes[0], self.seriesMap[str(ref)]['Label'])
->>>>>>> 194b5a6f01a2d56632eb6f175c2ca8dcf1b15711
+      self.editorWidget.helper.setVolumes(self.volumeNodes[0], self.seriesMap[str(ref)]['Label'])
 
     self.cvLogic.viewerPerVolume(self.volumeNodes, background=self.volumeNodes[0], label=refLabel,layout=[self.rows,self.cols],viewNames=self.viewNames)
     self.cvLogic.rotateToVolumePlanes(self.volumeNodes[0])
@@ -1427,14 +1418,11 @@ class PCampReviewWidget:
     progressIndicator.show()
     return progressIndicator
 
-<<<<<<< HEAD
   def onSliderChanged(self, newValue):
     if self.volumeNodes[0].GetClassName() == 'vtkMRMLMultiVolumeNode':
       newValue = int(newValue)
       d = self.volumeNodes[0].GetDisplayNode()
       d.SetFrameComponent(newValue)
-    
-=======
 
   # Gets triggered on a click in the structures table
   def onStructureClicked(self,index):
@@ -1511,7 +1499,6 @@ class PCampReviewWidget:
       self.setOffsetOnAllSliceWidgets(axial_offset)
       
 
->>>>>>> 194b5a6f01a2d56632eb6f175c2ca8dcf1b15711
   def cleanupDir(self, d):
     if not os.path.exists(d):
       return
