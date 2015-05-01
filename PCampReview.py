@@ -164,6 +164,7 @@ class PCampReviewWidget:
     reloadCollapsibleButton = ctk.ctkCollapsibleButton()
     reloadCollapsibleButton.text = "Reload && Test"
     self.layout.addWidget(reloadCollapsibleButton)
+    self.currentStep = 1
     reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
 
     # reload button
