@@ -1396,11 +1396,11 @@ class PCampReviewWidget:
     exstingStructures = [self.seriesMap[x]['ShortName'] for x in propagateInto if len(slicer.util.getNodes(self.seriesMap[x]['ShortName']+'-'+selectedLabelType+'-label')) != 0]
     
     if len(exstingStructures) != 0:
-      msg = 'ERROR\n' + selectedLabelType + ' already exists in the following volumes:\n\n'
+      msg = 'ERROR\n\'' + selectedLabelType + '\' already exists in the following volumes:\n\n'
       for vol in exstingStructures:
         msg += vol + '\n'
         
-      msg += '\nCannot propagate on top of existing volumes.\n'
+      msg += '\nCannot propagate on top of existing volumes.  Delete the existing ROIs and try again.\n'
       self.infoPopup(msg)
       
     else:
@@ -1408,6 +1408,9 @@ class PCampReviewWidget:
       
       transform = slicer.vtkMRMLLinearTransformNode()
       slicer.mrmlScene.AddNode(transform)
+      
+      progress = self.makeProgressIndicator(len(propagateInto))
+      nProcessed = 0
       
       for dstSeries in propagateInto:
         labelName = self.seriesMap[dstSeries]['ShortName']+'-'+selectedLabelType+'-label'
@@ -1427,9 +1430,16 @@ class PCampReviewWidget:
 
         self.__cliNode = None
         self.__cliNode = slicer.cli.run(slicer.modules.brainsresample, self.__cliNode, parameters, wait_for_completion=True)
+        
+        progress.setValue(nProcessed)
+        nProcessed += 1
+        if progress.wasCanceled:
+          break
+        
+      progress.delete()
       
       slicer.mrmlScene.RemoveNode(transform)
-    
+      
     
   # Gets triggered on a click in the structures table
   def onStructureClicked(self,index):
