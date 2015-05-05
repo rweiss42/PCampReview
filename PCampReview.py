@@ -292,8 +292,23 @@ class PCampReviewWidget:
     self.groupLayout.addRow(self.multiView, self.singleView)
     step4Layout.addRow(groupLabel, self.groupWidget)
     # step4Layout.addRow(groupLabel, self.viewGroup)
-
+    
     self.viewGroup.connect('buttonClicked(int)', self.onViewUpdateRequested)
+    
+    
+    orientationLabel = qt.QLabel('View orientation:')
+    self.orientationBox = qt.QGroupBox()
+    self.orientationBox.setLayout(qt.QFormLayout())
+    self.orientationButtons = {}
+    self.orientations = ("Axial", "Sagittal", "Coronal")
+    for orientation in self.orientations:
+      self.orientationButtons[orientation] = qt.QRadioButton()
+      self.orientationButtons[orientation].text = orientation
+      self.orientationButtons[orientation].connect("clicked()", lambda o=orientation: self.setOrientation(o))
+      self.orientationBox.layout().addWidget(self.orientationButtons[orientation])
+    self.orientationButtons['Axial'].setChecked(1)
+    self.currentOrientation = 'Axial'
+    step4Layout.addRow(orientationLabel, self.orientationBox)
 
     self.step4frame.collapsed = 1
     self.step4frame.connect('clicked()', self.onStep4Selected)
@@ -315,8 +330,8 @@ class PCampReviewWidget:
                         'PerStructureVolumesFrame')[0]
     perStructureFrame.collapsed = False
     
-    structuresView = slicer.util.findChildren(volumesFrame,'StructuresView')[0]
-    structuresView.connect("activated(QModelIndex)", self.onStructureClicked)
+    self.structuresView = slicer.util.findChildren(volumesFrame,'StructuresView')[0]
+    self.structuresView.connect("activated(QModelIndex)", self.onStructureClicked)
 
     buttonsFrame = slicer.util.findChildren(volumesFrame,'ButtonsFrame')[0]
     '''
@@ -1260,19 +1275,19 @@ class PCampReviewWidget:
     self.volumeNodes = [self.seriesMap[str(ref)]['Volume']]+self.volumeNodes
     self.viewNames = [self.seriesMap[str(ref)]['ShortName']]+self.viewNames
     
-    sliceNames = [str(x) for x in seriesNumbers if x != ref]
-    sliceNames = [str(ref)]+sliceNames
+    self.sliceNames = [str(x) for x in seriesNumbers if x != ref]
+    self.sliceNames = [str(ref)]+self.sliceNames
 
     try:
       # check if already have a label for this node
-      refLabel = self.seriesMap[str(ref)]['Label']
+      self.refLabel = self.seriesMap[str(ref)]['Label']
     except KeyError:
       # create a new label
       labelName = self.seriesMap[str(ref)]['ShortName']+'-label'
-      refLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene,self.volumeNodes[0],labelName)
-      self.seriesMap[str(ref)]['Label'] = refLabel
+      self.refLabel = self.volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene,self.volumeNodes[0],labelName)
+      self.seriesMap[str(ref)]['Label'] = self.refLabel
 
-    dNode = refLabel.GetDisplayNode()
+    dNode = self.refLabel.GetDisplayNode()
     dNode.SetAndObserveColorNodeID(self.PCampReviewColorNode.GetID())
     print('Volume nodes: '+str(self.viewNames))
     self.cvLogic = CompareVolumes.CompareVolumesLogic()
@@ -1292,10 +1307,8 @@ class PCampReviewWidget:
 
     self.editorWidget.helper.setVolumes(self.volumeNodes[0], self.seriesMap[str(ref)]['Label'])
 
-    self.cvLogic.viewerPerVolume(self.volumeNodes, background=self.volumeNodes[0], label=refLabel,layout=[self.rows,self.cols],viewNames=sliceNames)
+    self.cvLogic.viewerPerVolume(self.volumeNodes, background=self.volumeNodes[0], label=self.refLabel, layout=[self.rows,self.cols], viewNames=self.sliceNames, orientation=self.currentOrientation)
     self.cvLogic.rotateToVolumePlanes(self.volumeNodes[0])
-
-    print('Setting master node for the Editor to '+self.volumeNodes[0].GetID())
 
     self.editorParameterNode.Modified()
 
@@ -1328,6 +1341,26 @@ class PCampReviewWidget:
     return progressIndicator
 
 
+  def setOrientation(self, orientation):
+    
+    if orientation in self.orientations:
+      self.currentOrientation = orientation
+    
+      # Update viewers
+      self.cvLogic.viewerPerVolume(self.volumeNodes, background=self.volumeNodes[0], label=self.refLabel, layout=[self.rows,self.cols], viewNames=self.sliceNames, orientation=self.currentOrientation)
+      self.cvLogic.rotateToVolumePlanes(self.volumeNodes[0])
+    
+      self.editorParameterNode.Modified()
+
+      self.onViewUpdateRequested(2)
+      self.onViewUpdateRequested(1)
+      self.setOpacityOnAllSliceWidgets(1.0)
+      
+      # pretend we clicked the structure in the list to trigger a jump to ROI if necessary
+      selectedStrucutre = self.structuresView.currentIndex()
+      if (selectedStrucutre.row() >= 0):
+        self.structuresView.activated(self.structuresView.currentIndex())
+    
   # Gets triggered on a click in the structures table
   def onStructureClicked(self,index):
     selectedLabelID = int(self.editorWidget.helper.structures.item(index.row(),0).text())
@@ -1398,9 +1431,20 @@ class PCampReviewWidget:
           coronal_offset  = -RASDir[2]
           axial_offset    = -RASDir[1]
 
-      # this assumes we're in axial offset (which we should be)...
-      # will need to visit if/when we are going to allow people to change orientation
-      self.setOffsetOnAllSliceWidgets(axial_offset)
+      # Set the appropriate offset based on current orientation
+      if self.currentOrientation == 'Axial':
+        self.setOffsetOnAllSliceWidgets(axial_offset)
+      elif self.currentOrientation == 'Coronal':
+        self.setOffsetOnAllSliceWidgets(coronal_offset)
+      elif self.currentOrientation == 'Sagittal':
+        self.setOffsetOnAllSliceWidgets(sagittal_offset)
+
+      # snap to IJK to try and avoid rounding errors
+      sliceLogics = slicer.app.layoutManager().mrmlSliceLogics()
+      numLogics = sliceLogics.GetNumberOfItems()
+      for n in range(numLogics):
+        l = sliceLogics.GetItemAsObject(n)
+        l.SnapSliceOffsetToIJK()
       
 
   def cleanupDir(self, d):
