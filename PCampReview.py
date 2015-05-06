@@ -1249,10 +1249,6 @@ class PCampReviewWidget:
           
           self.seriesMap[seriesNumber]['ScalarVolume'] = mvNodeFrameCopy
           
-          
-          
-          
-          
       else:
         print('Failed to load image volume!')
         return
