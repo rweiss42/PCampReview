@@ -1334,49 +1334,50 @@ class PCampReviewWidget:
   def onPropagateROI(self):
     selectionModel = self.structuresView.selectionModel()
     selected = selectionModel.currentIndex().row()
-    if selected >= 0:
-      selectedLabelVol = self.editorWidget.helper.structures.item(selected,3).text()
-      print('Want to propagate '+selectedLabelVol)
-      
-      # Get a list of all series numbers currently loaded
-      seriesNumbers= [x for x in self.seriesMap.keys()]
-      seriesNumbers.sort()
-      loadedVolumes = [self.seriesMap[x] for x in seriesNumbers if x != self.refSeriesNumber]
-      
-      # See which volumes we want to propagate to
-      self.propagatePrompt = qt.QDialog()
-      propagatePromptLayout = qt.QVBoxLayout()
-      self.propagatePrompt.setLayout(propagatePromptLayout)
-      propagateLabel = qt.QLabel('Select which volumes you wish to propagate '+ selectedLabelVol +' to...', self.propagatePrompt)
-      
-      propagateView = qt.QListView()
-      propagateView.setObjectName('PropagateTable')
-      propagateView.setSpacing(3)
-      propagateModel = qt.QStandardItemModel()
-      propagateModel.setHorizontalHeaderLabels(['Volume'])
-      
-      self.propagateItems = []
-      for labelNode in loadedVolumes:
-          item = qt.QStandardItem(labelNode['ShortName'])
-          item.setCheckable(1)
-          item.setCheckState(2)
-          self.propagateItems.append(item)
-          propagateModel.appendRow(item)
-      
-      propagateView.setCurrentIndex(propagateModel.index(0,0))
-      propagateView.setModel(propagateModel)
-      propagateView.setSelectionMode(qt.QAbstractItemView.SingleSelection)
-      propagateView.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
-      
-      # THIS IS A HACK
-      # I really should be handling this by catching some sort of onClose event of the dialog window...
-      propagateButton = qt.QPushButton('Propagate', propagateView)
-      propagateButton.connect('clicked()', self.propagateSelected)
-      
-      propagatePromptLayout.addWidget(propagateLabel)
-      propagatePromptLayout.addWidget(propagateView)
-      propagatePromptLayout.addWidget(propagateButton)
-      self.propagatePrompt.exec_()
+    
+    # Nothing selected
+    if selected < 0:
+      return
+    
+    selectedLabelVol = self.editorWidget.helper.structures.item(selected,3).text()
+    print('Want to propagate '+selectedLabelVol)
+    
+    # Get a list of all series numbers currently loaded
+    seriesNumbers= [x for x in self.seriesMap.keys()]
+    seriesNumbers.sort()
+    loadedVolumes = [self.seriesMap[x] for x in seriesNumbers if x != self.refSeriesNumber]
+    
+    # See which volumes we want to propagate to
+    self.propagatePrompt = qt.QDialog()
+    propagatePromptLayout = qt.QVBoxLayout()
+    self.propagatePrompt.setLayout(propagatePromptLayout)
+    propagateLabel = qt.QLabel('Select which volumes you wish to propagate '+ selectedLabelVol +' to...', self.propagatePrompt)
+    
+    propagateView = qt.QListView()
+    propagateView.setSpacing(3)
+    propagateModel = qt.QStandardItemModel()
+    propagateModel.setHorizontalHeaderLabels(['Volume'])
+    
+    self.propagateItems = []
+    for labelNode in loadedVolumes:
+        item = qt.QStandardItem(labelNode['ShortName'])
+        item.setCheckable(1)
+        item.setCheckState(2)
+        self.propagateItems.append(item)
+        propagateModel.appendRow(item)
+    
+    propagateView.setCurrentIndex(propagateModel.index(0,0))
+    propagateView.setModel(propagateModel)
+    propagateView.setSelectionMode(qt.QAbstractItemView.SingleSelection)
+    propagateView.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
+    
+    propagateButton = qt.QPushButton('Propagate', propagateView)
+    propagateButton.connect('clicked()', self.propagateSelected)
+    
+    propagatePromptLayout.addWidget(propagateLabel)
+    propagatePromptLayout.addWidget(propagateView)
+    propagatePromptLayout.addWidget(propagateButton)
+    self.propagatePrompt.exec_()
   
   def propagateSelected(self):
     self.propagatePrompt.close()
@@ -1397,6 +1398,7 @@ class PCampReviewWidget:
     
     if len(exstingStructures) != 0:
       msg = 'ERROR\n\'' + selectedLabelType + '\' already exists in the following volumes:\n\n'
+      
       for vol in exstingStructures:
         msg += vol + '\n'
         
