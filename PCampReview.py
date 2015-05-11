@@ -1366,11 +1366,12 @@ class PCampReviewWidget:
 
   def extractFrame(self, multiVolumeNode, frameId):
     # extract a ScalarVolumeNode frame
-    mvNodeFrameCopy = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode",multiVolumeNode.GetName())
-    if mvNodeFrameCopy == None or mvNodeFrameCopy.GetClassName() != 'vtkMRMLScalarVolumeNode':
+    mvNodeFrameCopy = slicer.util.getNode(multiVolumeNode.GetName()+'_frame')
+    if mvNodeFrameCopy == None:
       print('mvNodeFrameCopy not found')
       mvNodeFrameCopy = slicer.vtkMRMLScalarVolumeNode()
       mvNodeFrameCopy.SetScene(slicer.mrmlScene)
+      mvNodeFrameCopy.SetName(multiVolumeNode.GetName()+'_frame')
       slicer.mrmlScene.AddNode(mvNodeFrameCopy)
   
     print('using mvNodeFrameCopy '+mvNodeFrameCopy.GetID())
@@ -1405,7 +1406,7 @@ class PCampReviewWidget:
       displayNode.SetDefaultColorMap()
       mvNodeFrameCopy.SetAndObserveDisplayNodeID(displayNode.GetID())
 
-    mvNodeFrameCopy.SetName(multiVolumeNode.GetName())
+    # mvNodeFrameCopy.SetName(multiVolumeNode.GetName())
     
     return mvNodeFrameCopy
     
