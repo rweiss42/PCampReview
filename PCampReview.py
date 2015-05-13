@@ -1196,15 +1196,16 @@ class PCampReviewWidget:
       (success,volume) = slicer.util.loadVolume(fileName,returnNode=True)
       if success:
         
-        volume.SetName(shortName)
-        
         if volume.GetClassName() == 'vtkMRMLScalarVolumeNode':
           self.seriesMap[seriesNumber]['Volume'] = volume
-        
+          self.seriesMap[seriesNumber]['Volume'].SetName(shortName)
         elif volume.GetClassName() == 'vtkMRMLMultiVolumeNode':
           self.seriesMap[seriesNumber]['MultiVolume'] = volume
+          self.seriesMap[seriesNumber]['MultiVolume'].SetName(shortName+'_multivolume')
           self.seriesMap[seriesNumber]['FrameNumber'] = volume.GetNumberOfFrames()-1
-          self.seriesMap[seriesNumber]['Volume'] = self.extractFrame(volume, volume.GetNumberOfFrames()-1)
+          self.seriesMap[seriesNumber]['Volume'] = self.extractFrame(None,
+                                                                     self.seriesMap[seriesNumber]['MultiVolume'], 
+                                                                     self.seriesMap[seriesNumber]['FrameNumber'])
           
       else:
         print('Failed to load image volume!')
@@ -1224,8 +1225,6 @@ class PCampReviewWidget:
       except:
         self.refSelector.addItem(text)
         pass
-
-      self.seriesMap[seriesNumber]['Volume'].SetName(shortName)
 
       if longName.find('T2')>=0 and longName.find('AX')>=0:
         ref = int(seriesNumber)
@@ -1362,22 +1361,22 @@ class PCampReviewWidget:
   def onSliderChanged(self, newValue):
     newValue = int(newValue)
     self.seriesMap[self.refSeriesNumber]['FrameNumber'] = newValue
-    self.seriesMap[self.refSeriesNumber]['Volume'] = self.extractFrame(self.seriesMap[self.refSeriesNumber]['MultiVolume'], newValue)
+    self.seriesMap[self.refSeriesNumber]['Volume'] = self.extractFrame(self.seriesMap[self.refSeriesNumber]['Volume'], 
+                                                                       self.seriesMap[self.refSeriesNumber]['MultiVolume'], 
+                                                                       newValue)
 
-  def extractFrame(self, multiVolumeNode, frameId):
-    # extract a ScalarVolumeNode frame
-    mvNodeFrameCopy = slicer.util.getNode(multiVolumeNode.GetName()+'_frame')
-    if mvNodeFrameCopy == None:
-      print('mvNodeFrameCopy not found')
-      mvNodeFrameCopy = slicer.vtkMRMLScalarVolumeNode()
-      mvNodeFrameCopy.SetScene(slicer.mrmlScene)
-      mvNodeFrameCopy.SetName(multiVolumeNode.GetName()+'_frame')
-      slicer.mrmlScene.AddNode(mvNodeFrameCopy)
+  def extractFrame(self, scalarVolumeNode, multiVolumeNode, frameId):
+    # if no scalar volume given, create one
+    if scalarVolumeNode == None:
+      scalarVolumeNode = slicer.vtkMRMLScalarVolumeNode()
+      scalarVolumeNode.SetScene(slicer.mrmlScene)
+      # name = mv node name minus _multivolume 
+      scalarVolumeName = multiVolumeNode.GetName().split('_multivolume')[0]
+      scalarVolumeNode.SetName(scalarVolumeName)
+      slicer.mrmlScene.AddNode(scalarVolumeNode)
   
-    print('using mvNodeFrameCopy '+mvNodeFrameCopy.GetID())
-    
+    # Extract the image data
     mvImage = multiVolumeNode.GetImageData()
-
     extract = vtk.vtkImageExtractComponents()
     if vtk.VTK_MAJOR_VERSION <= 5:
       extract.SetInput(mvImage)
@@ -1390,25 +1389,22 @@ class PCampReviewWidget:
     ijk2ras = vtk.vtkMatrix4x4()
     multiVolumeNode.GetRASToIJKMatrix(ras2ijk)
     multiVolumeNode.GetIJKToRASMatrix(ijk2ras)
-    mvNodeFrameCopy.SetRASToIJKMatrix(ras2ijk)
-    mvNodeFrameCopy.SetIJKToRASMatrix(ijk2ras)
+    scalarVolumeNode.SetRASToIJKMatrix(ras2ijk)
+    scalarVolumeNode.SetIJKToRASMatrix(ijk2ras)
 
-    mvNodeFrameCopy.SetAndObserveImageData(extract.GetOutput())
+    scalarVolumeNode.SetAndObserveImageData(extract.GetOutput())
 
-    displayNode = mvNodeFrameCopy.GetDisplayNode()
-
+    # Create display node if missing
+    displayNode = scalarVolumeNode.GetDisplayNode()
     if displayNode == None:
-      print('No displayNode found')
       displayNode = slicer.mrmlScene.CreateNodeByClass('vtkMRMLScalarVolumeDisplayNode')
       displayNode.SetReferenceCount(1)
       displayNode.SetScene(slicer.mrmlScene)
       slicer.mrmlScene.AddNode(displayNode)
       displayNode.SetDefaultColorMap()
-      mvNodeFrameCopy.SetAndObserveDisplayNodeID(displayNode.GetID())
-
-    # mvNodeFrameCopy.SetName(multiVolumeNode.GetName())
+      scalarVolumeNode.SetAndObserveDisplayNodeID(displayNode.GetID())
     
-    return mvNodeFrameCopy
+    return scalarVolumeNode
     
 
   # Gets triggered on a click in the structures table
