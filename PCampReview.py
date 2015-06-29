@@ -71,6 +71,7 @@ class PCampReviewWidget(ScriptedLoadableModuleWidget):
     self.currentStep = 1
 
   def isSeriesOfInterest(self,desc):
+    return False
     discardThose = ['SAG','COR','PURE','mapping','DWI','breath','3D DCE','loc','Expo','Map','MAP','POST','ThreeParameter','AutoAIF','BAT','-Slope','PkRsqr']
     for d in discardThose:
       if string.find(desc,d)>=0:
@@ -434,10 +435,12 @@ class PCampReviewWidget(ScriptedLoadableModuleWidget):
     
     self.labelMapOutlineButton = qt.QPushButton('Outline')
     self.labelMapOutlineButton.checkable = True
+    self.labelMapOutlineButton.checked = True
     modelsHLayout.layout().addWidget(self.labelMapOutlineButton)
     self.labelMapOutlineButton.connect('toggled(bool)', self.setLabelOutline)
     
     self.enableJumpToROI = qt.QCheckBox();
+    self.enableJumpToROI.checked = True
     self.enableJumpToROI.setText("Jump to ROI")
     modelsHLayout.addWidget(self.enableJumpToROI)
     
@@ -458,7 +461,7 @@ class PCampReviewWidget(ScriptedLoadableModuleWidget):
     # TODO: add here source directory selector
 
     self.qaButton = qt.QPushButton("PI-RADS v2 review form")
-    self.completionGroupBoxLayout.addWidget(self.qaButton)
+    # self.completionGroupBoxLayout.addWidget(self.qaButton)
     self.qaButton.connect('clicked()',self.onQAFormClicked)
 
     self.saveButton = qt.QPushButton("Save")
@@ -1860,16 +1863,34 @@ class PCampReviewWidget(ScriptedLoadableModuleWidget):
 
       order = labelNode.ComputeScanOrderFromIJKToRAS(IJKtoRAS)
       if order == 'IS':
+          IJKtoRASDir.SetElement(0,1,0)
+          IJKtoRASDir.SetElement(0,2,0)
+          IJKtoRASDir.SetElement(1,0,0)
+          IJKtoRASDir.SetElement(1,2,0)
+          IJKtoRASDir.SetElement(2,0,0)
+          IJKtoRASDir.SetElement(2,1,0)
           RASDir = IJKtoRASDir.MultiplyPoint((RAScoord[0], RAScoord[1], RAScoord[2], 1))
           sagittal_offset = -RASDir[0]
           coronal_offset  = -RASDir[1]
           axial_offset    =  RASDir[2]
       elif order == 'AP':
+          IJKtoRASDir.SetElement(0,1,0)
+          IJKtoRASDir.SetElement(0,2,0)
+          IJKtoRASDir.SetElement(1,0,0)
+          IJKtoRASDir.SetElement(1,1,0)
+          IJKtoRASDir.SetElement(2,0,0)
+          IJKtoRASDir.SetElement(2,2,0)
           RASDir = IJKtoRASDir.MultiplyPoint((RAScoord[0], RAScoord[1], RAScoord[2], 1))
           sagittal_offset = -RASDir[0]
           coronal_offset  = -RASDir[2]
           axial_offset    = -RASDir[1]
       elif order == 'LR':
+          IJKtoRASDir.SetElement(0,0,0)
+          IJKtoRASDir.SetElement(0,1,0)
+          IJKtoRASDir.SetElement(1,1,0)
+          IJKtoRASDir.SetElement(1,2,0)
+          IJKtoRASDir.SetElement(2,0,0)
+          IJKtoRASDir.SetElement(2,1,0)
           RASDir = IJKtoRASDir.MultiplyPoint((RAScoord[2], RAScoord[1], RAScoord[0], 1))
           sagittal_offset =  RASDir[0]
           coronal_offset  = -RASDir[2]
