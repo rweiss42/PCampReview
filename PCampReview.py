@@ -329,7 +329,7 @@ class PCampReviewWidget(ScriptedLoadableModuleWidget):
     translateAreaLayout.addRow("Translate PA: ", self.translatePA)
     translateAreaLayout.addRow("Translate IS: ", self.translateIS)
     
-    self.hardenTransformButton = qt.QPushButton("Harden Transform")
+    self.hardenTransformButton = qt.QPushButton("Save Transform")
     self.hardenTransformButton.enabled = False
     self.hardenTransformButton.connect('clicked(bool)', self.onHardenTransform)
     translateAreaLayout.addRow(self.hardenTransformButton)
@@ -414,10 +414,12 @@ class PCampReviewWidget(ScriptedLoadableModuleWidget):
     
     self.labelMapOutlineButton = qt.QPushButton('Outline')
     self.labelMapOutlineButton.checkable = True
+    self.labelMapOutlineButton.checked = True
     modelsHLayout.layout().addWidget(self.labelMapOutlineButton)
     self.labelMapOutlineButton.connect('toggled(bool)', self.setLabelOutline)
     
     self.enableJumpToROI = qt.QCheckBox()
+    self.enableJumpToROI.checked = True
     self.enableJumpToROI.setText("Jump to ROI")
     modelsHLayout.addWidget(self.enableJumpToROI)
     
@@ -437,9 +439,9 @@ class PCampReviewWidget(ScriptedLoadableModuleWidget):
     #step5Layout = qt.QFormLayout(self.step5frame)
     # TODO: add here source directory selector
 
-    self.qaButton = qt.QPushButton("PI-RADS v2 review form")
-    self.completionGroupBoxLayout.addWidget(self.qaButton)
-    self.qaButton.connect('clicked()',self.onQAFormClicked)
+    # self.qaButton = qt.QPushButton("PI-RADS v2 review form")
+    # self.completionGroupBoxLayout.addWidget(self.qaButton)
+    # self.qaButton.connect('clicked()',self.onQAFormClicked)
 
     self.saveButton = qt.QPushButton("Save")
     self.completionGroupBoxLayout.addWidget(self.saveButton)
@@ -1822,6 +1824,7 @@ class PCampReviewLogic(ScriptedLoadableModuleLogic):
 
   @staticmethod
   def isSeriesOfInterest(desc):
+    return False
     discardThose = ['SAG','COR','PURE','mapping','DWI',
                     'breath','3D DCE','loc','Expo','Map',
                     'MAP','POST','ThreeParameter','AutoAIF',
